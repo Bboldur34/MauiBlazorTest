@@ -2,13 +2,13 @@
 // Set up media stream constant and parameters.
 const mediaStreamConstraints = {
     video: true,
-    audio: true
+   // audio: true
 };
 
 // Set up to exchange only video.
 const offerOptions = {
     offerToReceiveVideo: 1,
-    offerToReceiveAudio: 1
+   // offerToReceiveAudio: 1
 };
 
 const servers = {
@@ -41,7 +41,6 @@ export async function startLocalStream() {
 function createPeerConnection() {
     if (peerConnection != null) return;
     // Create peer connections and add behavior.
-    peerConnection = "hello";
     peerConnection = new RTCPeerConnection(servers);
     console.log("Created local peer connection object peerConnection.");
 

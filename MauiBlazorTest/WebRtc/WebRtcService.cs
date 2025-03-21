@@ -9,11 +9,12 @@ public class WebRtcService
 {
     private readonly NavigationManager _nav;
     private readonly IJSRuntime _js;
+    private readonly string _signallingServerBaseUrl;
+
     private IJSObjectReference? _jsModule;
     private DotNetObjectReference<WebRtcService>? _jsThis;
     private HubConnection? _hub;
     private string? _signalingChannel;
-    string _signallingServerBaseUrl;
     public event EventHandler<IJSObjectReference>? OnRemoteStreamAcquired;
 
     public WebRtcService(IJSRuntime js, NavigationManager nav, IConfiguration configuration)
@@ -21,74 +22,136 @@ public class WebRtcService
         _js = js;
         _nav = nav;
         _signallingServerBaseUrl = configuration["SignalingServer:BaseUrl"];
-
     }
 
     public async Task Join(string signalingChannel)
     {
-        if (_signalingChannel != null) throw new InvalidOperationException();
-        _signalingChannel = signalingChannel;
-        var hub = await GetHub();
-        await hub.SendAsync("join", signalingChannel);
-        _jsModule = await _js.InvokeAsync<IJSObjectReference>(
-            "import", "/js/WebRtcService.cs.js");
-        _jsThis = DotNetObjectReference.Create(this);
-        await _jsModule.InvokeVoidAsync("initialize", _jsThis);
+        try
+        {
+            _jsModule = await _js.InvokeAsync<IJSObjectReference>(
+                "import", "/js/WebRtcService.cs.js");
+            _jsThis = DotNetObjectReference.Create(this);
+            
+            if (_signalingChannel != null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            _signalingChannel = signalingChannel;
+            var hub = await GetHub();
+            await hub.SendAsync("join", signalingChannel);
+            await _jsModule.InvokeVoidAsync("initialize", _jsThis);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
+
     public async Task<IJSObjectReference> StartLocalStream()
     {
-        if (_jsModule == null) throw new InvalidOperationException();
-        var stream = await _jsModule.InvokeAsync<IJSObjectReference>("startLocalStream");
+        IJSObjectReference stream = null;
+        try
+        {
+            if (_jsModule == null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            stream = await _jsModule.InvokeAsync<IJSObjectReference>("startLocalStream");
+            return stream;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
         return stream;
     }
+
     public async Task Call()
     {
-        if (_jsModule == null) throw new InvalidOperationException();
-        var offerDescription = await _jsModule.InvokeAsync<string>("callAction");
-        await SendOffer(offerDescription);
+        try
+        {
+            if (_jsModule == null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            var offerDescription = await _jsModule.InvokeAsync<string>("callAction");
+            await SendOffer(offerDescription);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
 
     public async Task Hangup()
     {
-        if (_jsModule == null) throw new InvalidOperationException();
-        await _jsModule.InvokeVoidAsync("hangupAction");
+        try
+        {
+            if (_jsModule == null)
+            {
+                throw new InvalidOperationException();
+            }
 
-        var hub = await GetHub();
-        await hub.SendAsync("leave", _signalingChannel);
+            await _jsModule.InvokeVoidAsync("hangupAction");
 
-        _signalingChannel = null;
+            var hub = await GetHub();
+            await hub.SendAsync("leave", _signalingChannel);
+
+            _signalingChannel = null;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
 
     private async Task<HubConnection> GetHub()
     {
         try
         {
-            if (_hub != null) return _hub;
+            if (_hub != null)
+            {
+                return _hub;
+            }
 
             var hub = new HubConnectionBuilder()
                 .WithUrl(_signallingServerBaseUrl + "/messagehub", (opts) =>
                 {
                     DevicePlatform platform;
-                    platform= DeviceInfo.Platform;
+                    platform = DeviceInfo.Platform;
                     if (platform == DevicePlatform.Android)
                     {
                         opts.HttpMessageHandlerFactory = (message) =>
                         {
                             if (message is HttpClientHandler clientHandler)
                                 // Bypass SSL certificate.
+                            {
                                 clientHandler.ServerCertificateCustomValidationCallback =
                                     (sender, certificate, chain, sslPolicyErrors) => true;
+                            }
+
                             return message;
                         };
                     }
                 })
+                .AddMessagePackProtocol()
                 .Build();
 
             hub.On<string, string, string>("SignalWebRtc", async (signalingChannel, type, payload) =>
             {
-                if (_jsModule == null) throw new InvalidOperationException();
+                if (_jsModule == null)
+                {
+                    throw new InvalidOperationException();
+                }
 
-                if (_signalingChannel != signalingChannel) return;
+                if (_signalingChannel != signalingChannel)
+                {
+                    return;
+                }
+
                 switch (type)
                 {
                     case "offer":
@@ -103,7 +166,7 @@ public class WebRtcService
                 }
             });
 
-       
+
             await hub.StartAsync();
             _hub = hub;
         }
@@ -111,37 +174,68 @@ public class WebRtcService
         {
             Console.WriteLine(e.Message);
         }
-      
+
         return _hub;
     }
 
     [JSInvokable]
     public async Task SendOffer(string offer)
     {
-        var hub = await GetHub();
-        await hub.SendAsync("SignalWebRtc", _signalingChannel, "offer", offer);
+        try
+        {
+            var hub = await GetHub();
+            await hub.SendAsync("SignalWebRtc", _signalingChannel, "offer", offer);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
 
     [JSInvokable]
     public async Task SendAnswer(string answer)
     {
-        var hub = await GetHub();
-        await hub.SendAsync("SignalWebRtc", _signalingChannel, "answer", answer);
+        try
+        {
+            var hub = await GetHub();
+            await hub.SendAsync("SignalWebRtc", _signalingChannel, "answer", answer);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
 
     [JSInvokable]
     public async Task SendCandidate(string candidate)
     {
-        var hub = await GetHub();
-        await hub.SendAsync("SignalWebRtc", _signalingChannel, "candidate", candidate);
-    }    
+        try
+        {
+            var hub = await GetHub();
+            await hub.SendAsync("SignalWebRtc", _signalingChannel, "candidate", candidate);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+    }
 
     [JSInvokable]
     public async Task SetRemoteStream()
     {
-        if (_jsModule == null) throw new InvalidOperationException();
-        var stream = await _jsModule.InvokeAsync<IJSObjectReference>("getRemoteStream");
-        OnRemoteStreamAcquired?.Invoke(this, stream);
-    }
+        try
+        {
+            if (_jsModule == null)
+            {
+                throw new InvalidOperationException();
+            }
 
+            var stream = await _jsModule.InvokeAsync<IJSObjectReference>("getRemoteStream");
+            OnRemoteStreamAcquired?.Invoke(this, stream);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+    }
 }
