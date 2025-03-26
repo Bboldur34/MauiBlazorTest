@@ -120,24 +120,8 @@ public class WebRtcService
             var hub = new HubConnectionBuilder()
                 .WithUrl(_signallingServerBaseUrl + "/messagehub", (opts) =>
                 {
-                    DevicePlatform platform;
-                    platform = DeviceInfo.Platform;
-                    if (platform == DevicePlatform.Android)
-                    {
-                        opts.HttpMessageHandlerFactory = (message) =>
-                        {
-                            if (message is HttpClientHandler clientHandler)
-                                // Bypass SSL certificate.
-                            {
-                                clientHandler.ServerCertificateCustomValidationCallback =
-                                    (sender, certificate, chain, sslPolicyErrors) => true;
-                            }
-
-                            return message;
-                        };
-                    }
+                
                 })
-                .AddMessagePackProtocol()
                 .Build();
 
             hub.On<string, string, string>("SignalWebRtc", async (signalingChannel, type, payload) =>

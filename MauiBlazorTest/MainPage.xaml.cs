@@ -36,7 +36,6 @@ public partial class MainPage : ContentPage
     {
 #if IOS
         e.Configuration.AllowsInlineMediaPlayback = true;
-        e.Configuration.MediaTypesRequiringUserActionForPlayback = WebKit.WKAudiovisualMediaTypes.None;
 #endif
 
     }
