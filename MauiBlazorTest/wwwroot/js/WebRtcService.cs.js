@@ -2,13 +2,13 @@
 // Set up media stream constant and parameters.
 const mediaStreamConstraints = {
     video: true,
-   // audio: true
+    audio: true
 };
 
 // Set up to exchange only video.
 const offerOptions = {
     offerToReceiveVideo: 1,
-   // offerToReceiveAudio: 1
+    offerToReceiveAudio: 1
 };
 
 const servers = {
@@ -65,9 +65,6 @@ function createPeerConnection() {
 // Create offer - send to peer - receive answer - set stream
 // Handles call button action: creates peer connection.
 export async function callAction() {
-    if (isOffered) return Promise.resolve();
-
-    isOffering = true;
     console.log("Starting call.");
     createPeerConnection();
     console.debug("Starting call.");
@@ -93,9 +90,6 @@ export async function processAnswer(descriptionText) {
 // In this case, we setRemoteDescription similar to when we got the answer
 // in the flow above. srd triggers addStream.
 export async function processOffer(descriptionText) {
-    console.log("processOffer");
-    if (isOffering) return;
-
     createPeerConnection();
     let description = JSON.parse(descriptionText);
     console.debug("peerConnection setRemoteDescription start.");
@@ -114,7 +108,7 @@ export async function processOffer(descriptionText) {
 export async function processCandidate(candidateText) {
     let candidate = JSON.parse(candidateText);
     console.debug("processCandidate: peerConnection addIceCandidate start.");
-    await peerConnection.addIceCandidate(candidateText);
+    await peerConnection.addIceCandidate(candidate);
     console.debug("addIceCandidate added.");
 }
 
