@@ -124,7 +124,7 @@ async function gotRemoteMediaStream(event) {
     const [mediaRemoteStream] = event.streams;
     console.debug(mediaRemoteStream);
     remoteStream = mediaRemoteStream;
-    await dotNet.invokeMethodAsync("SetRemoteStream");
+    await dotNet.invokeMethodAsync("AddRemoteStream");
     console.debug("Remote peer connection received remote stream.");
 }
 export function getRemoteStream() {

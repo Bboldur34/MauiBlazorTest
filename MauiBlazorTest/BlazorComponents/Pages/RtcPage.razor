@@ -15,7 +15,12 @@
 <div class="container">
     <div class="row">
         <video class="col col-lg-6 p-0" muted="true" src="" id="localVideo" autoplay playsinline></video>
-        <video class="col col-lg-6 p-0" src="" id="remoteVideo" autoplay playsinline></video>
+    </div>
+    <div class="row">
+        @foreach (var streamId in @_remoteStreamIds)
+        {
+            <video class="col col-lg-6 p-0" src="" id="@streamId" autoplay playsinline></video>
+        }
     </div>
 </div>
 
@@ -25,12 +30,13 @@
     private bool _startDisabled;
     private bool _callDisabled = true;
     private bool _hangupDisabled = true;
+    private List<string> _remoteStreamIds = new();
 
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
     }
-
+    
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -40,6 +46,27 @@
         }
 
         await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async void RtcOnRemoteStreamsUpdated(object? sender, List<IJSObjectReference> streams)
+    {
+        if (_module == null)
+        {
+            throw new InvalidOperationException();
+        }
+        
+        for (int i = 0; i < streams.Count; i++)
+        {
+            var streamId = $"remoteVideo{i}";
+            _remoteStreamIds.Add(streamId);
+            await _module.InvokeVoidAsync("setRemoteStream", streams[i], streamId);
+            Console.WriteLine($"Remote stream {i} acquired with stream {streamId}");
+           
+        }
+        _callDisabled = true;
+        _hangupDisabled = false;
+        _startDisabled = true;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task StartAction()
@@ -57,7 +84,7 @@
         _startDisabled = true;
         
         await RtcService.Join(_channel);
-        RtcService.OnRemoteStreamAcquired += RtcOnOnRemoteStreamAcquired;
+        RtcService.OnRemoteStreamsUpdated += RtcOnRemoteStreamsUpdated;
 
         var stream = await RtcService.StartLocalStream();
         await _module.InvokeVoidAsync("setLocalStream", stream);

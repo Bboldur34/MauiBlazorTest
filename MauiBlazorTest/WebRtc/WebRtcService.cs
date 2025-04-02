@@ -15,7 +15,9 @@ public class WebRtcService
     private DotNetObjectReference<WebRtcService>? _jsThis;
     private HubConnection? _hub;
     private string? _signalingChannel;
-    public event EventHandler<IJSObjectReference>? OnRemoteStreamAcquired;
+    private readonly List<IJSObjectReference> _remoteStreams = new();
+    public Action<object?, IJSObjectReference> OnRemoteStreamAcquired;
+    public event EventHandler<List<IJSObjectReference>>? OnRemoteStreamsUpdated;
 
     public WebRtcService(IJSRuntime js, NavigationManager nav, IConfiguration configuration)
     {
@@ -205,7 +207,7 @@ public class WebRtcService
     }
 
     [JSInvokable]
-    public async Task SetRemoteStream()
+    public async Task AddRemoteStream()
     {
         try
         {
@@ -215,7 +217,8 @@ public class WebRtcService
             }
 
             var stream = await _jsModule.InvokeAsync<IJSObjectReference>("getRemoteStream");
-            OnRemoteStreamAcquired?.Invoke(this, stream);
+            _remoteStreams.Add(stream);
+            OnRemoteStreamsUpdated?.Invoke(this, _remoteStreams);
         }
         catch (Exception e)
         {
