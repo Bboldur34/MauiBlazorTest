@@ -8,29 +8,58 @@
     <label for="channelInput">Channel</label>
     <input id="channelInput" @bind="_channel"/>
     <button id="startButton" @onclick="StartAction" disabled="@_startDisabled">Start</button>
-    <button id="callButton" @onclick="CallAction" disabled="@_callDisabled">Call</button>
+    <button id="callButton" @onclick="CallAllAction" disabled="@_callDisabled">Call All</button>
     <button id="hangupButton" @onclick="HangupAction" disabled="@_hangupDisabled">Hang Up</button>
 </div>
 
 <div class="container">
     <div class="row">
-        <video class="col col-lg-6 p-0" muted="true" src="" id="localVideo" autoplay playsinline></video>
+        <div class="col col-lg-6 p-0 local-video-container">
+            <video id="localVideo" autoplay playsinline muted="true"></video>
+            <div class="video-label">You</div>
+        </div>
     </div>
-    <div class="row">
-        @foreach (var streamId in @_remoteStreamIds)
+    <div id="remoteVideoContainer" class="row">
+        @foreach (var peer in _remotePeers)
         {
-            <video class="col col-lg-6 p-0" src="" id="@streamId" autoplay playsinline></video>
+            <div class="col col-lg-6 p-0 remote-video-container">
+                <video id="@peer.VideoElementId" autoplay playsinline></video>
+                <div class="video-label">Peer: @peer.PeerId.Substring(0, 6)</div>
+            </div>
         }
     </div>
 </div>
 
+<style>
+    .local-video-container, .remote-video-container {
+        position: relative;
+        margin-bottom: 10px;
+    }
+    
+    .video-label {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: white;
+        padding: 5px;
+        border-radius: 4px;
+    }
+    
+    video {
+        width: 100%;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 4px;
+    }
+</style>
 
 @code {
     private IJSObjectReference? _module;
     private bool _startDisabled;
     private bool _callDisabled = true;
     private bool _hangupDisabled = true;
-    private List<string> _remoteStreamIds = new();
+    private List<RemotePeer> _remotePeers = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -48,25 +77,66 @@
         await base.OnAfterRenderAsync(firstRender);
     }
 
-    private async void RtcOnRemoteStreamsUpdated(object? sender, List<IJSObjectReference> streams)
+    private async void RtcOnRemoteStreamAcquired(object? sender, RemoteStreamEventArgs e)
     {
         if (_module == null)
         {
             throw new InvalidOperationException();
         }
         
-        for (int i = 0; i < streams.Count; i++)
+        // Generate a unique video element ID for this peer
+        var videoElementId = $"remote_{e.PeerId}";
+        
+        // Add the peer to our list if it doesn't exist
+        if (!_remotePeers.Any(p => p.PeerId == e.PeerId))
         {
-            var streamId = $"remoteVideo{i}";
-            _remoteStreamIds.Add(streamId);
-            await _module.InvokeVoidAsync("setRemoteStream", streams[i], streamId);
-            Console.WriteLine($"Remote stream {i} acquired with stream {streamId}");
-           
+            _remotePeers.Add(new RemotePeer
+            {
+                PeerId = e.PeerId,
+                Stream = e.Stream,
+                VideoElementId = videoElementId
+            });
+            
+            // Force UI update
+            await InvokeAsync(StateHasChanged);
+            
+            // Set the stream to the video element
+            await _module.InvokeVoidAsync("setRemoteStream", e.Stream, videoElementId);
+            Console.WriteLine($"Remote stream acquired from peer: {e.PeerId}");
         }
-        _callDisabled = true;
+        
         _hangupDisabled = false;
-        _startDisabled = true;
         await InvokeAsync(StateHasChanged);
+    }
+    
+    private async void RtcOnPeerDisconnected(object? sender, string peerId)
+    {
+        if (_module == null)
+        {
+            throw new InvalidOperationException();
+        }
+        
+        // Find the peer in our list
+        var peer = _remotePeers.FirstOrDefault(p => p.PeerId == peerId);
+        if (peer != null)
+        {
+            // Remove the video element
+            await _module.InvokeVoidAsync("removeRemoteStream", peer.VideoElementId);
+            
+            // Remove the peer from our list
+            _remotePeers.Remove(peer);
+            
+            Console.WriteLine($"Peer disconnected: {peerId}");
+            await InvokeAsync(StateHasChanged);
+        }
+        
+        // If no more peers, enable the call button again
+        if (_remotePeers.Count == 0)
+        {
+            _hangupDisabled = true;
+            _callDisabled = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task StartAction()
@@ -84,47 +154,55 @@
         _startDisabled = true;
         
         await RtcService.Join(_channel);
-        RtcService.OnRemoteStreamsUpdated += RtcOnRemoteStreamsUpdated;
+        RtcService.OnRemoteStreamAcquired += RtcOnRemoteStreamAcquired;
+        RtcService.OnPeerDisconnected += RtcOnPeerDisconnected;
 
         var stream = await RtcService.StartLocalStream();
         await _module.InvokeVoidAsync("setLocalStream", stream);
         _callDisabled = false;
     }
 
-    private async void RtcOnOnRemoteStreamAcquired(object? _, IJSObjectReference e)
-    {
-        if (_module == null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        await _module.InvokeVoidAsync("setRemoteStream", e);
-        
-        _callDisabled = true;
-        _hangupDisabled = false;
-        _startDisabled = true;
-        
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task CallAction()
+    private async Task CallAllAction()
     {
         if (_callDisabled)
         {
             return;
         }
+        
         _callDisabled = true;
-        await RtcService.Call();
-        _hangupDisabled = false;
+        
+        // Call all participants in the channel
+        await RtcService.CallAllParticipants();
     }
 
     private async Task HangupAction()
     {
+        // Hang up with all peers
         await RtcService.Hangup();
-        _callDisabled = true;
+        
+        // Clear the remote peers list
+        foreach (var peer in _remotePeers)
+        {
+            if (_module != null)
+            {
+                await _module.InvokeVoidAsync("removeRemoteStream", peer.VideoElementId);
+            }
+        }
+        _remotePeers.Clear();
+        
+        // Update button states
+        _callDisabled = false;
         _hangupDisabled = true;
-        _startDisabled = false;
+        
+        await InvokeAsync(StateHasChanged);
     }
 
     private string _channel = "foo";
+    
+    private class RemotePeer
+    {
+        public string PeerId { get; set; }
+        public IJSObjectReference Stream { get; set; }
+        public string VideoElementId { get; set; }
+    }
 }
